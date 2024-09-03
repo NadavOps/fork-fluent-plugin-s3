@@ -83,6 +83,20 @@ module Fluent::Plugin
       desc "Profile name. Default to 'default' or ENV['AWS_PROFILE']"
       config_param :profile_name, :string, default: nil
     end
+    config_section :roles_anywhere_process_credentials, multi: false do
+      desc "Path to the AWS signing helper binary"
+      config_param :signing_helper_binary_location, :string, default: "./aws_signing_helper"
+      desc "Path to the certificate file"
+      config_param :certificate_path, :string, default: nil, secret: true
+      desc "Path to the private key file"
+      config_param :private_key_path, :string, default: nil, secret: true
+      desc "ARN of the trust anchor"
+      config_param :trust_anchor_arn, :string, default: nil
+      desc "ARN of the profile to use"
+      config_param :profile_arn, :string, default: nil
+      desc "ARN of the IAM role to assume"
+      config_param :role_arn, :string, default: nil
+    end
     desc "The number of attempts to load instance profile credentials from the EC2 metadata service using IAM role"
     config_param :aws_iam_retries, :integer, default: nil, deprecated: "Use 'instance_profile_credentials' instead"
     desc "S3 bucket name"
@@ -559,6 +573,18 @@ module Fluent::Plugin
         credentials_options[:path] = c.path if c.path
         credentials_options[:profile_name] = c.profile_name if c.profile_name
         options[:credentials] = Aws::SharedCredentials.new(credentials_options)
+      when @roles_anywhere_process_credentials
+        c = @roles_anywhere_process_credentials
+        credentials_options[:process_cmd] = [
+          c.signing_helper_binary_location,
+          'credential-process',
+          "--certificate #{c.certificate_path}",
+          "--private-key #{c.private_key_path}",
+          "--trust-anchor-arn #{c.trust_anchor_arn}",
+          "--profile-arn #{c.profile_arn}",
+          "--role-arn #{c.role_arn}"
+        ].join(' ')
+        options[:credentials] = Aws::ProcessCredentials.new(credentials_options[:process_cmd])
       when @aws_iam_retries
         log.warn("'aws_iam_retries' parameter is deprecated. Use 'instance_profile_credentials' instead")
         credentials_options[:retries] = @aws_iam_retries
